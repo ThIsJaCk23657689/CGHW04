@@ -133,11 +133,16 @@ std::vector <glm::vec4> nearPlaneVertex;
 std::vector <glm::vec4> farPlaneVertex;
 
 // 0 => x-ortho, 1 => y-ortho, 2 => z-ortho, 3 => main-camera(perspective), 4 => all
-static int currentScreen = 4;
+static int currentScreen = 3;
 static float distanceOrthoCamera = 5.0;
 
 // Light Parameters
-glm::vec3 lightPosition = glm::vec3(90.0f, 0.0f, 0.0f);
+std::vector<glm::vec3> lightPositions = {
+	glm::vec3(10.0f, 0.0f, 40.0f),
+	glm::vec3(-20.0f, 10.0f, 30.0f),
+	glm::vec3(30.0f, 0.0f, -20.0f),
+	glm::vec3(40.0f, -10.0f, 10.0f)
+};
 
 // Object Data
 std::vector<float> cubeVertices;
@@ -169,8 +174,7 @@ int main() {
 		logging::loggingMessage(logging::LogType::ERROR, "Failed to initialize GLFW.");
 		glfwTerminate();
 		return -1;
-	}
-	else {
+	} else {
 		logging::loggingMessage(logging::LogType::DEBUG, "Initialize GLFW successful.");
 	}
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -183,8 +187,7 @@ int main() {
 		logging::loggingMessage(logging::LogType::ERROR, "Failed to create GLFW window.");
 		glfwTerminate();
 		return -1;
-	}
-	else {
+	} else {
 		logging::loggingMessage(logging::LogType::DEBUG, "Create GLFW window successful.");
 	}
 
@@ -202,8 +205,7 @@ int main() {
 		logging::loggingMessage(logging::LogType::ERROR, "Failed to initialize GLAD.");
 		glfwTerminate();
 		return -1;
-	}
-	else {
+	} else {
 		logging::loggingMessage(logging::LogType::DEBUG, "Initialize GLAD successful.");
 	}
 
@@ -228,7 +230,7 @@ int main() {
 
 	// Create shader program
 	Shader myShader("Shaders/lighting.vs", "Shaders/lighting.fs");
-	// Shader textureShader("Shaders\\texture.vs", "Shaders\\texture.fs");
+	// Shader textureShader("Shaders/texture.vs", "Shaders/texture.fs");
 	Shader cubemapShader("Shaders/cubemap.vs", "Shaders/cubemap.fs");
 	
 	// Create object data
@@ -277,9 +279,8 @@ int main() {
 
 	// binding texture to shader
 	myShader.use();
-	myShader.setInt("material.diffuse", 0);
-	myShader.setInt("material.specular", 0);
-	myShader.setFloat("material.shininess", 64.0f);
+	myShader.setInt("material.diffuse_texture", 0);
+	myShader.setInt("material.specular_texture", 0);
 	myShader.setInt("skybox", 2);
 
 	// The main loop
@@ -334,20 +335,61 @@ int main() {
 			myShader.use();
 			myShader.setMat4("view", view);
 			myShader.setMat4("projection", projection);
+			myShader.setVec3("viewPos", (isGhost) ? camera.Position : followCamera.Position);
 
 			myShader.setBool("isCubeMap", false);
-			myShader.setBool("isGlowObj", false);
-			myShader.setFloat("alpha", 1.0f);
-			myShader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
-			myShader.setVec3("viewPos", (isGhost) ? camera.Position: followCamera.Position);
+			myShader.setBool("useLighting", true);
+			myShader.setBool("useEmission", false);
+			myShader.setVec4("material.diffuse", glm::vec4(1.0f, 0.0f, 0.0f, 1.0));
+			myShader.setFloat("material.shininess", 64.0f);
 			
-			myShader.setVec3("light.position", lightPosition);
-			myShader.setVec3("light.ambient", glm::vec3(0.2f, 0.2, 0.2f));
-			myShader.setVec3("light.diffuse", glm::vec3(0.9f, 0.9f, 0.9f));
-			myShader.setVec3("light.specular", glm::vec3(0.4f, 0.4f, 0.4f));
-			myShader.setFloat("light.constant", 1.0f);
-			myShader.setFloat("light.linear", 0.007f);
-			myShader.setFloat("light.quadratic", 0.0002f);
+			myShader.setVec3("dirlight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
+			myShader.setVec3("dirlight.ambient", glm::vec3(0.5f));
+			myShader.setVec3("dirlight.diffuse", glm::vec3(0.4f));
+			myShader.setVec3("dirlight.specular", glm::vec3(0.1f));
+
+			myShader.setVec3("pointlights[0].position", lightPositions[0]);
+			myShader.setVec3("pointlights[0].ambient", glm::vec3(0.1f, 0.1, 0.1f));
+			myShader.setVec3("pointlights[0].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
+			myShader.setVec3("pointlights[0].specular", glm::vec3(0.4f, 0.4f, 0.4f));
+			myShader.setFloat("pointlights[0].constant", 1.0f);
+			myShader.setFloat("pointlights[0].linear", 0.09f);
+			myShader.setFloat("pointlights[0].quadratic", 0.032f);
+
+			myShader.setVec3("pointlights[1].position", lightPositions[1]);
+			myShader.setVec3("pointlights[1].ambient", glm::vec3(0.1f, 0.1, 0.1f));
+			myShader.setVec3("pointlights[1].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
+			myShader.setVec3("pointlights[1].specular", glm::vec3(0.4f, 0.4f, 0.4f));
+			myShader.setFloat("pointlights[1].constant", 1.0f);
+			myShader.setFloat("pointlights[1].linear", 0.09f);
+			myShader.setFloat("pointlights[1].quadratic", 0.032f);
+
+			myShader.setVec3("pointlights[2].position", lightPositions[2]);
+			myShader.setVec3("pointlights[2].ambient", glm::vec3(0.1f, 0.1, 0.1f));
+			myShader.setVec3("pointlights[2].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
+			myShader.setVec3("pointlights[2].specular", glm::vec3(0.4f, 0.4f, 0.4f));
+			myShader.setFloat("pointlights[2].constant", 1.0f);
+			myShader.setFloat("pointlights[2].linear", 0.09f);
+			myShader.setFloat("pointlights[2].quadratic", 0.032f);
+
+			myShader.setVec3("pointlights[3].position", lightPositions[3]);
+			myShader.setVec3("pointlights[3].ambient", glm::vec3(0.1f, 0.1, 0.1f));
+			myShader.setVec3("pointlights[3].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
+			myShader.setVec3("pointlights[3].specular", glm::vec3(0.4f, 0.4f, 0.4f));
+			myShader.setFloat("pointlights[3].constant", 1.0f);
+			myShader.setFloat("pointlights[3].linear", 0.09f);
+			myShader.setFloat("pointlights[3].quadratic", 0.032f);
+
+			myShader.setVec3("spotlight.position", (isGhost) ? camera.Position : ROVPosition);
+			myShader.setVec3("spotlight.direction", (isGhost) ? camera.Front : ROVFront);
+			myShader.setVec3("spotlight.ambient", glm::vec3(0.0f));
+			myShader.setVec3("spotlight.diffuse", glm::vec3(1.0f));
+			myShader.setVec3("spotlight.specular", glm::vec3(1.0f));
+			myShader.setFloat("spotlight.constant", 1.0f);
+			myShader.setFloat("spotlight.linear", 0.09f);
+			myShader.setFloat("spotlight.quadratic", 0.032f);
+			myShader.setFloat("spotlight.cutOff", glm::cos(glm::radians(12.5f)));
+			myShader.setFloat("spotlight.outerCutoff", glm::cos(glm::radians(15.0f)));
 
 			// Render on the screen;
 
@@ -356,7 +398,7 @@ int main() {
 				myShader.setBool("enableTexture", false);
 				modelMatrix.push();
 					modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.2f)));
-					myShader.setVec3("color", glm::vec3(0.1, 0.1, 0.1));
+					myShader.setVec4("material.diffuse", glm::vec4(0.1f, 0.1f, 0.1f, 1.0));
 					myShader.setMat4("model", modelMatrix.top());
 					drawSphere();
 				modelMatrix.pop();
@@ -370,7 +412,6 @@ int main() {
 				glActiveTexture(GL_TEXTURE2);
 				glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
 				modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(distanceOrthoCamera * 5.34)));
-				// myShader.setVec3("color", glm::vec3(0.294117647 * daytime, 0.623529412 * daytime, 0.949019608 * daytime));
 				myShader.setMat4("model", modelMatrix.top());
 				drawCube();
 			modelMatrix.pop();
@@ -378,7 +419,6 @@ int main() {
 			glDepthFunc(GL_LESS);
 
 			// Draw Sea
-			myShader.use();
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, seaTexture);
 			myShader.setBool("enableTexture", true);
@@ -388,9 +428,9 @@ int main() {
 			// Draw Seabed (Sand)
 			modelMatrix.push();
 				// draw sand
+				glBindTexture(GL_TEXTURE_2D, sandTexture);
 				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -5.0f, 0.0f)));
 				myShader.setMat4("model", modelMatrix.top());
-				glBindTexture(GL_TEXTURE_2D, sandTexture);
 				drawFloor();
 
 				// draw grass
@@ -408,12 +448,12 @@ int main() {
 				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -2.5f, 0.0f)));
 				for (unsigned int i = 0; i < fishposition.size(); i++) {
 					modelMatrix.push();
-					modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(-sin(currentTime), 0.0f, 0.0f)));
-					modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(currentTime * 5), glm::vec3(0.0, 1.0, 0.0)));
-					modelMatrix.save(glm::translate(modelMatrix.top(), fishposition[i]));
-					modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.5f, 0.5f)));
-					myShader.setMat4("model", modelMatrix.top());
-					drawFish();
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(-sin(currentTime), 0.0f, 0.0f)));
+						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(currentTime * 5), glm::vec3(0.0, 1.0, 0.0)));
+						modelMatrix.save(glm::translate(modelMatrix.top(), fishposition[i]));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.5f, 0.5f)));
+						myShader.setMat4("model", modelMatrix.top());
+						drawFish();
 					modelMatrix.pop();
 				}
 			modelMatrix.pop();
@@ -422,9 +462,9 @@ int main() {
 			modelMatrix.push();
 				for (unsigned int i = 0; i < boxposition.size(); i++) {
 					modelMatrix.push();
-					modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(boxposition[i].x, sin(currentTime * 3 + boxposition[i].z) / 4, boxposition[i].z)));
-					myShader.setMat4("model", modelMatrix.top());
-					drawBox();
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(boxposition[i].x, sin(currentTime * 3 + boxposition[i].z) / 4, boxposition[i].z)));
+						myShader.setMat4("model", modelMatrix.top());
+						drawBox();
 					modelMatrix.pop();
 				}
 			modelMatrix.pop();
@@ -448,7 +488,7 @@ int main() {
 					modelMatrix.save(glm::translate(modelMatrix.top(), location));
 					modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(-camera.Yaw), glm::vec3(0.0f, 1.0f, 0.0f)));
 					modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(camera.Pitch), glm::vec3(1.0f, 0.0f, 0.0f)));
-				}else {
+				} else {
 					glm::vec3 location = followCamera.Front * 1.4f + followCamera.Position;
 					modelMatrix.save(glm::translate(modelMatrix.top(), location));
 					modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(-followCamera.Yaw), glm::vec3(0.0f, 1.0f, 0.0f)));
@@ -462,31 +502,28 @@ int main() {
 
 			// Update View Volume
 			glBindVertexArray(viewVolumeVAO);
-			glBindBuffer(GL_ARRAY_BUFFER, viewVolumeVBO);
-			glBufferData(GL_ARRAY_BUFFER, viewVolumeVertices.size() * sizeof(float), viewVolumeVertices.data(), GL_STATIC_DRAW);
+				glBindBuffer(GL_ARRAY_BUFFER, viewVolumeVBO);
+				glBufferData(GL_ARRAY_BUFFER, viewVolumeVertices.size() * sizeof(float), viewVolumeVertices.data(), GL_STATIC_DRAW);
 			glBindVertexArray(0);
 
 			// Draw View Volume
 			modelMatrix.push();
-				myShader.setVec3("color", glm::vec3(0.6, 0.6, 0.6));
+				myShader.setVec4("material.diffuse", glm::vec4(0.6f, 0.6f, 0.6f, 0.6f));
 				myShader.setMat4("model", modelMatrix.top());
-				myShader.setFloat("alpha", 0.6f);
 				glBindVertexArray(viewVolumeVAO);
 					glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 				glBindVertexArray(0);
-				myShader.setFloat("alpha", 1.0f);
 			modelMatrix.pop();
 
 			// draw sun
-			myShader.setBool("isGlowObj", true);
+			myShader.setBool("useEmission", true);
 			modelMatrix.push();
-				lightPosition = glm::vec3(cos(currentTime / 10) * 90.0f, sin(currentTime / 10) * 90.0f, 0.0f);
-				modelMatrix.save(glm::translate(modelMatrix.top(), lightPosition));
-				myShader.setVec3("color", glm::vec3(1.0, 1.0, 1.0));
+				modelMatrix.save(glm::translate(modelMatrix.top(), lightPositions[0]));
+				myShader.setVec4("material.diffuse", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
 				myShader.setMat4("model", modelMatrix.top());
 				drawSphere();
 			modelMatrix.pop();
-			myShader.setBool("isGlowObj", false);
+			myShader.setBool("useEmission", false);
 		}
 
 		// render on the screen
@@ -1188,151 +1225,151 @@ void drawBox() {
 
 void drawROV(Shader shader) {
 	modelMatrix.push();
-	// Head
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.6f, 2.0f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(1.0f, 0.956862745f, 0.580392157f));
-	drawCube();
-	modelMatrix.pop();
+		// Head
+		modelMatrix.push();
+			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.6f, 2.0f)));
+			shader.setVec4("material.diffuse", glm::vec4(1.0f, 0.956862745f, 0.580392157f, 1.0f));
+			shader.setMat4("model", modelMatrix.top());
+			drawCube();
+		modelMatrix.pop();
 
-	// Body
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.5f, 0.0f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.8f, 0.4f, 1.6f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.611764706f, 0.611764706f, 0.611764706f));
-	drawCube();
-	modelMatrix.pop();
+		// Body
+		modelMatrix.push();
+			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.5f, 0.0f)));
+			modelMatrix.push();
+				modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.8f, 0.4f, 1.6f)));
+				shader.setVec4("material.diffuse", glm::vec4(0.611764706f, 0.611764706f, 0.611764706f, 1.0f));
+				shader.setMat4("model", modelMatrix.top());
+				drawCube();
+			modelMatrix.pop();
 
-	// Camera
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.95f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.3f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.1f, 0.1f, 0.1f));
-	drawCube();
-	modelMatrix.pop();
+			// Camera
+			modelMatrix.push();
+				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.95f)));
+				modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.3f)));
+				shader.setVec4("material.diffuse", glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
+				shader.setMat4("model", modelMatrix.top());
+				drawCube();
+			modelMatrix.pop();
 
-	// Hand
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.2f, -0.4f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.2f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.4f, 0.4f, 0.4f));
-	drawSphere();
-	modelMatrix.pop();
+			// Hand
+			modelMatrix.push();
+				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.2f, -0.4f)));
+				modelMatrix.push();
+					modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.2f)));
+					shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+					shader.setMat4("model", modelMatrix.top());
+					drawSphere();
+				modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.3f, 0.0f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.6f, 0.05f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
+				modelMatrix.push();
+				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.3f, 0.0f)));
+					modelMatrix.push();
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.6f, 0.05f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawCube();
+					modelMatrix.pop();
 
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.3f, 0.0f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.15f, 0.15f, 0.15f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.4f, 0.4f, 0.4f));
-	drawSphere();
-	modelMatrix.pop();
+					modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -0.3f, 0.0f)));
+					modelMatrix.push();
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.15f, 0.15f, 0.15f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawSphere();
+					modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.5f)));
-	modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 1.0f, 0.05f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
+					modelMatrix.push();
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.5f)));
+						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 1.0f, 0.05f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawCube();
+					modelMatrix.pop();
 
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -1.0f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 0.1f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.4f, 0.4f, 0.4f));
-	drawSphere();
-	modelMatrix.pop();
+					modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -1.0f)));
+					modelMatrix.push();
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 0.1f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawSphere();
+					modelMatrix.pop();
 
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.1f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(-0.05f, 0.0f, 0.0f)));
-	modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.2f, 0.2f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
+					modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.1f)));
+					modelMatrix.push();
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(-0.05f, 0.0f, 0.0f)));
+						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.2f, 0.2f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawCube();
+					modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.05f, 0.0f, 0.0f)));
-	modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.2f, 0.2f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
-	modelMatrix.pop();
-	modelMatrix.pop();
+					modelMatrix.push();
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.05f, 0.0f, 0.0f)));
+						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.2f, 0.2f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawCube();
+					modelMatrix.pop();
+	
+				modelMatrix.pop();
+			modelMatrix.pop();
 
-	// Engine
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, 1.1f)));
-	//modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 0.6f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
+			// Engine
+			modelMatrix.push();
+				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, 1.1f)));
+				//modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
+				modelMatrix.push();
+					modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 0.6f)));
+					shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+					shader.setMat4("model", modelMatrix.top());
+					drawCube();
+				modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, 0.3f)));
-	modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(ROVEngineAngle), glm::vec3(0.0f, 0.0f, 1.0f)));
-	modelMatrix.push();
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.1f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.4f, 0.4f, 0.4f));
-	drawSphere();
-	modelMatrix.pop();
+				modelMatrix.push();
+					modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, 0.3f)));
+					modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(ROVEngineAngle), glm::vec3(0.0f, 0.0f, 1.0f)));
+					modelMatrix.push();
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.1f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawSphere();
+					modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
+					modelMatrix.push();
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawCube();
+					modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(120.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
+					modelMatrix.push();
+						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(120.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawCube();
+					modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(240.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
-	drawCube();
-	modelMatrix.pop();
+					modelMatrix.push();
+						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(240.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
+						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setMat4("model", modelMatrix.top());
+						drawCube();
+					modelMatrix.pop();
 
-	modelMatrix.pop();
+				modelMatrix.pop();
 
+			modelMatrix.pop();
 
-	modelMatrix.pop();
-
-	modelMatrix.pop();
+		modelMatrix.pop();
 
 	modelMatrix.pop();
 }
@@ -1340,14 +1377,14 @@ void drawROV(Shader shader) {
 void drawCamera(Shader shader) {
 	modelMatrix.push();
 		modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.8f, 1.8f)));
-		shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.2f));
+		shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
 		shader.setMat4("model", modelMatrix.top());
 		drawCube();
 
 		modelMatrix.push();
 			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.2f)));
 			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.6f, 0.6f, 1.2f)));
-			shader.setVec3("color", glm::vec3(0.25f, 0.25f, 0.25f));
+			shader.setVec4("material.diffuse", glm::vec4(0.25f, 0.25f, 0.25f, 1.0f));
 			shader.setMat4("model", modelMatrix.top());
 			drawCube();
 		modelMatrix.pop();
@@ -1355,35 +1392,35 @@ void drawCamera(Shader shader) {
 }
 
 void drawAxis(Shader shader) {
-	shader.setBool("isGlowObj", true);
+	shader.setBool("useEmission", true);
 	modelMatrix.push();
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(1.5f, 0.0f, 0.0f)));
-	// modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(currentTime * 5), glm::vec3(0.0, 1.0, 0.0)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(3.0f, 0.1f, 0.1f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
-	drawCube();
-	modelMatrix.pop();
+		modelMatrix.push();
+			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(1.5f, 0.0f, 0.0f)));
+			// modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(currentTime * 5), glm::vec3(0.0, 1.0, 0.0)));
+			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(3.0f, 0.1f, 0.1f)));
+			shader.setVec4("material.diffuse", glm::vec4(1.0f, 0.0f, 0.0f, 1.0));
+			shader.setMat4("model", modelMatrix.top());
+			drawCube();
+		modelMatrix.pop();
 
 
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 1.5f, 0.0f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 3.0f, 0.1f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.0f, 1.0f, 0.0f));
-	drawCube();
-	modelMatrix.pop();
+		modelMatrix.push();
+			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 1.5f, 0.0f)));
+			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 3.0f, 0.1f)));
+			shader.setVec4("material.diffuse", glm::vec4(0.0f, 1.0f, 0.0f, 1.0));
+			shader.setMat4("model", modelMatrix.top());
+			drawCube();
+		modelMatrix.pop();
 
-	modelMatrix.push();
-	modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, 1.5f)));
-	modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 3.0f)));
-	shader.setMat4("model", modelMatrix.top());
-	shader.setVec3("color", glm::vec3(0.0f, 0.0f, 1.0f));
-	drawCube();
+		modelMatrix.push();
+			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, 1.5f)));
+			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 3.0f)));
+			shader.setVec4("material.diffuse", glm::vec4(0.0f, 0.0f, 1.0f, 1.0));
+			shader.setMat4("model", modelMatrix.top());
+			drawCube();
+		modelMatrix.pop();
 	modelMatrix.pop();
-	modelMatrix.pop();
-	shader.setBool("isGlowObj", false);
+	shader.setBool("useEmission", false);
 }
 
 void processROV(ROV_Movement direction, float deltaTime) {
@@ -1478,9 +1515,9 @@ void updateROVFront() {
 
 void drawSphere() {
 	modelMatrix.push();
-	glBindVertexArray(sphereVAO);
-	glDrawElements(GL_TRIANGLES, sphereIndices.size(), GL_UNSIGNED_INT, 0);
-	glBindVertexArray(0);
+		glBindVertexArray(sphereVAO);
+		glDrawElements(GL_TRIANGLES, sphereIndices.size(), GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
 	modelMatrix.pop();
 }
 
