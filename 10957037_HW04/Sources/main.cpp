@@ -759,6 +759,14 @@ void showUI() {
 			}
 			ImGui::Spacing();
 
+			if (ImGui::TreeNode("Illumination Illustration")) {
+				ImGui::BulletText("F to turn off/on the spot light");
+				ImGui::BulletText("L to switch lighting model");
+				ImGui::BulletText("H to switch shading model");
+				ImGui::TreePop();
+			}
+			ImGui::Spacing();
+
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Illumination")) {
