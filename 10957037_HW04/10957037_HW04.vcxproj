@@ -141,6 +141,7 @@
   <ItemGroup>
     <ClInclude Include="Headers\camera.h" />
     <ClInclude Include="Headers\followcamera.h" />
+    <ClInclude Include="Headers\light.h" />
     <ClInclude Include="Headers\logging.h" />
     <ClInclude Include="Headers\mstack.h" />
     <ClInclude Include="Headers\shader.h" />
@@ -148,6 +149,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="Resources\Textures\container2.png" />
+    <Image Include="Resources\Textures\container2_specular.png" />
     <Image Include="Resources\Textures\fish.png" />
     <Image Include="Resources\Textures\grass.png" />
     <Image Include="Resources\Textures\metal.png" />
@@ -164,6 +166,8 @@
   <ItemGroup>
     <None Include="Shaders\cubemap.fs" />
     <None Include="Shaders\cubemap.vs" />
+    <None Include="Shaders\gouraud.fs" />
+    <None Include="Shaders\gouraud.vs" />
     <None Include="Shaders\lighting.fs" />
     <None Include="Shaders\lighting.vs" />
     <None Include="Shaders\object.fs" />

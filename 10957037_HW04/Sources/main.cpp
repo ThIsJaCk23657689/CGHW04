@@ -17,6 +17,7 @@
 #include "../Headers/shader.h"
 #include "../Headers/camera.h"
 #include "../Headers/followcamera.h"
+#include "../Headers/light.h"
 
 #include <vector>
 #include <iostream>
@@ -80,7 +81,7 @@ glm::mat4 GetOrthoProjMatrix(float left, float right, float bottom, float top, f
 // Window parameters
 GLFWwindow* window;
 bool isfullscreen = false;
-const std::string WINDOW_TITLE = "Viewing and Projection";
+const std::string WINDOW_TITLE = "Lighting & Shading";
 unsigned int SCR_WIDTH = 800;
 unsigned int SCR_HEIGHT = 600;
 std::vector <int> window_position{ 0, 0 };
@@ -137,12 +138,21 @@ static int currentScreen = 3;
 static float distanceOrthoCamera = 5.0;
 
 // Light Parameters
-std::vector<glm::vec3> lightPositions = {
-	glm::vec3(10.0f, 0.0f, 40.0f),
-	glm::vec3(-20.0f, 10.0f, 30.0f),
-	glm::vec3(30.0f, 0.0f, -20.0f),
-	glm::vec3(40.0f, -10.0f, 10.0f)
+Light dirLight(glm::vec4(-0.2f, -1.0f, -0.3f, 0.0f), false);
+std::vector<Light> pointLights = {
+	Light(glm::vec3(10.0f, 10.0f, 35.0f), true),
+	Light(glm::vec3(-45.0f, 5.0f, 30.0f), true),
+	Light(glm::vec3(38.0f, 2.0f, -40.0f), true),
+	Light(glm::vec3(-50.0f, 15.0f, -45.0f), true),
+	Light(ROVPosition, true),
 };
+std::vector<Light> spotLights = {
+	Light(ROVPosition, ROVFront, true),
+	Light(camera.Position, camera.Position, false),
+};
+static bool useBlinnPhong = false;
+static bool useSpotExponent = false;
+static bool usePhongShading = true;
 
 // Object Data
 std::vector<float> cubeVertices;
@@ -165,7 +175,7 @@ std::vector<int> viewVolumeIndices;
 unsigned int viewVolumeVAO, viewVolumeVBO, viewVolumeEBO;
 
 // Texture parameter
-unsigned int rovTexture, seaTexture, sandTexture, grassTexture, boxTexture, fishTexture, skyTexture;
+unsigned int rovTexture, seaTexture, sandTexture, grassTexture, boxTexture, boxSpecularTexture, fishTexture, skyTexture;
 
 int main() {
 
@@ -230,8 +240,15 @@ int main() {
 
 	// Create shader program
 	Shader myShader("Shaders/lighting.vs", "Shaders/lighting.fs");
+	Shader phong("Shaders/lighting.vs", "Shaders/lighting.fs");
+	Shader gouraud("Shaders/gouraud.vs", "Shaders/gouraud.fs");
+	if (usePhongShading) {
+		myShader = phong;
+	} else {
+		myShader = gouraud;
+	}
 	// Shader textureShader("Shaders/texture.vs", "Shaders/texture.fs");
-	Shader cubemapShader("Shaders/cubemap.vs", "Shaders/cubemap.fs");
+	// Shader cubemapShader("Shaders/cubemap.vs", "Shaders/cubemap.fs");
 	
 	// Create object data
 	geneObejectData();
@@ -247,6 +264,11 @@ int main() {
 		boxposition.push_back(glm::vec3(unif_b(generator), 0.0f, unif_b(generator)));
 	}
 
+	std::vector<glm::vec3> plasticposition;
+	for (int i = 0; i < 10; i++) {
+		plasticposition.push_back(glm::vec3(unif_b(generator), 0.0f, unif_b(generator)));
+	}
+
 	std::vector<glm::vec3> grassposition;
 	for (int i = 0; i < 600; i++) {
 		grassposition.push_back(glm::vec3(unif_g(generator), 0.0f, unif_g(generator)));
@@ -257,12 +279,16 @@ int main() {
 		fishposition.push_back(glm::vec3(unif_f(generator), 0.0f, unif_f(generator)));
 	}
 
+	pointLights[4].Diffuse = glm::vec3(1.0f, 0.0f, 0.0f);
+	pointLights[4].Specular = glm::vec3(0.0f, 0.0f, 0.0f);
+
 	// Loading textures
 	rovTexture = loadTexture("Resources\\Textures\\metal.png");
 	seaTexture = loadTexture("Resources\\Textures\\sea.jpg");
 	sandTexture = loadTexture("Resources\\Textures\\sand.jpg");
 	grassTexture = loadTexture("Resources\\Textures\\grass.png");
 	boxTexture = loadTexture("Resources\\Textures\\container2.png");
+	boxSpecularTexture = loadTexture("Resources\\Textures\\container2_specular.png");
 	fishTexture = loadTexture("Resources\\Textures\\fish.png");
 	skyTexture = loadTexture("Resources\\Textures\\sky.jpg");
 
@@ -276,12 +302,6 @@ int main() {
 		"Resources/Textures/skybox/back.jpg",
 	};
 	unsigned int cubemapTexture = loadCubemap(faces);
-
-	// binding texture to shader
-	myShader.use();
-	myShader.setInt("material.diffuse_texture", 0);
-	myShader.setInt("material.specular_texture", 0);
-	myShader.setInt("skybox", 2);
 
 	// The main loop
 	while (!glfwWindowShouldClose(window)) {
@@ -331,8 +351,16 @@ int main() {
 			setProjectionMatrix(i);
 			setViewport(i);
 
+			if (usePhongShading) {
+				myShader = phong;
+			} else {
+				myShader = gouraud;
+			}
+
 			// Enable Shader and setting view & projection matrix
 			myShader.use();
+			myShader.setInt("skybox", 2);
+			
 			myShader.setMat4("view", view);
 			myShader.setMat4("projection", projection);
 			myShader.setVec3("viewPos", (isGhost) ? camera.Position : followCamera.Position);
@@ -340,56 +368,64 @@ int main() {
 			myShader.setBool("isCubeMap", false);
 			myShader.setBool("useLighting", true);
 			myShader.setBool("useEmission", false);
-			myShader.setVec4("material.diffuse", glm::vec4(1.0f, 0.0f, 0.0f, 1.0));
+			myShader.setBool("useBlinnPhong", useBlinnPhong);
+			myShader.setBool("useSpotExponent", useSpotExponent);
+
+			myShader.setInt("material.diffuse_texture", 0);
+			myShader.setInt("material.specular_texture", 1);
+			myShader.setVec4("material.diffuse", glm::vec4(0.0f, 0.0f, 0.0f, 1.0));
+			myShader.setVec4("material.specular", glm::vec4(0.0f, 0.0f, 0.0f, 1.0));
 			myShader.setFloat("material.shininess", 64.0f);
+
+			dirLight.Diffuse.x = sin(0.475 * currentTime) / 2 + 0.5;
+			dirLight.Diffuse.y = sin(0.495 * currentTime) / 2 + 0.5;
+			dirLight.Diffuse.z = sin(0.5 * currentTime) / 2 + 0.5;
 			
-			myShader.setVec3("dirlight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
-			myShader.setVec3("dirlight.ambient", glm::vec3(0.5f));
-			myShader.setVec3("dirlight.diffuse", glm::vec3(0.4f));
-			myShader.setVec3("dirlight.specular", glm::vec3(0.1f));
+			myShader.setVec3("dirlight.direction", dirLight.Direction);
+			myShader.setVec3("dirlight.ambient", dirLight.Ambient);
+			myShader.setVec3("dirlight.diffuse", dirLight.Diffuse);
+			myShader.setVec3("dirlight.specular", dirLight.Specular);
+			myShader.setBool("dirlight.enable", dirLight.Enable);
 
-			myShader.setVec3("pointlights[0].position", lightPositions[0]);
-			myShader.setVec3("pointlights[0].ambient", glm::vec3(0.1f, 0.1, 0.1f));
-			myShader.setVec3("pointlights[0].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
-			myShader.setVec3("pointlights[0].specular", glm::vec3(0.4f, 0.4f, 0.4f));
-			myShader.setFloat("pointlights[0].constant", 1.0f);
-			myShader.setFloat("pointlights[0].linear", 0.09f);
-			myShader.setFloat("pointlights[0].quadratic", 0.032f);
+			pointLights[4].Position = ROVPosition;
 
-			myShader.setVec3("pointlights[1].position", lightPositions[1]);
-			myShader.setVec3("pointlights[1].ambient", glm::vec3(0.1f, 0.1, 0.1f));
-			myShader.setVec3("pointlights[1].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
-			myShader.setVec3("pointlights[1].specular", glm::vec3(0.4f, 0.4f, 0.4f));
-			myShader.setFloat("pointlights[1].constant", 1.0f);
-			myShader.setFloat("pointlights[1].linear", 0.09f);
-			myShader.setFloat("pointlights[1].quadratic", 0.032f);
+			for (unsigned int i = 0; i < pointLights.size(); i++) {
+				std::stringstream ss;
+				ss << i;
+				std::string index = ss.str();
+				myShader.setVec3("pointlights[" + index + "].position", pointLights[i].Position);
+				myShader.setVec3("pointlights[" + index + "].ambient", pointLights[i].Ambient);
+				myShader.setVec3("pointlights[" + index + "].diffuse", pointLights[i].Diffuse);
+				myShader.setVec3("pointlights[" + index + "].specular", pointLights[i].Specular);
+				myShader.setFloat("pointlights[" + index + "].constant", pointLights[i].Constant);
+				myShader.setFloat("pointlights[" + index + "].linear", pointLights[i].Linear);
+				myShader.setFloat("pointlights[" + index + "].quadratic", pointLights[i].Quadratic);
+				myShader.setFloat("pointlights[" + index + "].enable", pointLights[i].Enable);
+			}
 
-			myShader.setVec3("pointlights[2].position", lightPositions[2]);
-			myShader.setVec3("pointlights[2].ambient", glm::vec3(0.1f, 0.1, 0.1f));
-			myShader.setVec3("pointlights[2].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
-			myShader.setVec3("pointlights[2].specular", glm::vec3(0.4f, 0.4f, 0.4f));
-			myShader.setFloat("pointlights[2].constant", 1.0f);
-			myShader.setFloat("pointlights[2].linear", 0.09f);
-			myShader.setFloat("pointlights[2].quadratic", 0.032f);
-
-			myShader.setVec3("pointlights[3].position", lightPositions[3]);
-			myShader.setVec3("pointlights[3].ambient", glm::vec3(0.1f, 0.1, 0.1f));
-			myShader.setVec3("pointlights[3].diffuse", glm::vec3(0.6f, 0.6f, 0.6f));
-			myShader.setVec3("pointlights[3].specular", glm::vec3(0.4f, 0.4f, 0.4f));
-			myShader.setFloat("pointlights[3].constant", 1.0f);
-			myShader.setFloat("pointlights[3].linear", 0.09f);
-			myShader.setFloat("pointlights[3].quadratic", 0.032f);
-
-			myShader.setVec3("spotlight.position", (isGhost) ? camera.Position : ROVPosition);
-			myShader.setVec3("spotlight.direction", (isGhost) ? camera.Front : ROVFront);
-			myShader.setVec3("spotlight.ambient", glm::vec3(0.0f));
-			myShader.setVec3("spotlight.diffuse", glm::vec3(1.0f));
-			myShader.setVec3("spotlight.specular", glm::vec3(1.0f));
-			myShader.setFloat("spotlight.constant", 1.0f);
-			myShader.setFloat("spotlight.linear", 0.09f);
-			myShader.setFloat("spotlight.quadratic", 0.032f);
-			myShader.setFloat("spotlight.cutOff", glm::cos(glm::radians(12.5f)));
-			myShader.setFloat("spotlight.outerCutoff", glm::cos(glm::radians(15.0f)));
+			spotLights[0].Position = ROVPosition + ROVFront;
+			spotLights[0].Direction = ROVFront;
+			
+			spotLights[1].Position = camera.Position;
+			spotLights[1].Direction = camera.Front;
+			
+			for (unsigned int i = 0; i < spotLights.size(); i++) {
+				std::stringstream ss;
+				ss << i;
+				std::string index = ss.str();
+				myShader.setVec3("spotlights[" + index + "].position", spotLights[i].Position);
+				myShader.setVec3("spotlights[" + index + "].direction", spotLights[i].Direction);
+				myShader.setVec3("spotlights[" + index + "].ambient", spotLights[i].Ambient);
+				myShader.setVec3("spotlights[" + index + "].diffuse", spotLights[i].Diffuse);
+				myShader.setVec3("spotlights[" + index + "].specular", spotLights[i].Specular);
+				myShader.setFloat("spotlights[" + index + "].constant", spotLights[i].Constant);
+				myShader.setFloat("spotlights[" + index + "].linear", spotLights[i].Linear);
+				myShader.setFloat("spotlights[" + index + "].quadratic", spotLights[i].Quadratic);
+				myShader.setFloat("spotlights[" + index + "].cutOff", glm::cos(glm::radians(spotLights[i].Cutoff)));
+				myShader.setFloat("spotlights[" + index + "].outerCutoff", glm::cos(glm::radians(spotLights[i].OuterCutoff)));
+				myShader.setFloat("spotlights[" + index + "].exponent", spotLights[i].Exponent);
+				myShader.setBool("spotlights[" + index + "].enable", spotLights[i].Enable);
+			}
 
 			// Render on the screen;
 
@@ -399,6 +435,8 @@ int main() {
 				modelMatrix.push();
 					modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.2f)));
 					myShader.setVec4("material.diffuse", glm::vec4(0.1f, 0.1f, 0.1f, 1.0));
+					myShader.setVec4("material.specular", glm::vec4(0.1f, 0.1f, 0.1f, 1.0));
+					myShader.setFloat("material.shininess", 64.0f);
 					myShader.setMat4("model", modelMatrix.top());
 					drawSphere();
 				modelMatrix.pop();
@@ -421,6 +459,8 @@ int main() {
 			// Draw Sea
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, seaTexture);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, NULL);
 			myShader.setBool("enableTexture", true);
 			myShader.setMat4("model", modelMatrix.top());
 			drawFloor();
@@ -428,7 +468,10 @@ int main() {
 			// Draw Seabed (Sand)
 			modelMatrix.push();
 				// draw sand
+				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, sandTexture);
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, NULL);
 				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, -5.0f, 0.0f)));
 				myShader.setMat4("model", modelMatrix.top());
 				drawFloor();
@@ -452,6 +495,7 @@ int main() {
 						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(currentTime * 5), glm::vec3(0.0, 1.0, 0.0)));
 						modelMatrix.save(glm::translate(modelMatrix.top(), fishposition[i]));
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.5f, 0.5f)));
+						myShader.setFloat("material.shininess", 0.16f);
 						myShader.setMat4("model", modelMatrix.top());
 						drawFish();
 					modelMatrix.pop();
@@ -463,14 +507,29 @@ int main() {
 				for (unsigned int i = 0; i < boxposition.size(); i++) {
 					modelMatrix.push();
 						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(boxposition[i].x, sin(currentTime * 3 + boxposition[i].z) / 4, boxposition[i].z)));
+						myShader.setFloat("material.shininess", 64.0f);
 						myShader.setMat4("model", modelMatrix.top());
 						drawBox();
 					modelMatrix.pop();
 				}
 			modelMatrix.pop();
 
-			// Draw ROV
+			// Draw Plastic Object
 			myShader.setBool("enableTexture", false);
+			modelMatrix.push();
+			for (unsigned int i = 0; i < plasticposition.size(); i++) {
+				modelMatrix.push();
+					modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(plasticposition[i].x, sin(currentTime * 3 + plasticposition[i].z) / 4, plasticposition[i].z)));
+					myShader.setVec4("material.diffuse", glm::vec4(0.1f, 0.35f, 0.1f, 1.0));
+					myShader.setVec4("material.specular", glm::vec4(0.45f, 0.55f, 0.45f, 1.0));
+					myShader.setFloat("material.shininess", 16.0f);
+					myShader.setMat4("model", modelMatrix.top());
+					drawCube();
+				modelMatrix.pop();
+			}
+			modelMatrix.pop();
+			
+			// Draw ROV
 			modelMatrix.push();
 				modelMatrix.save(glm::translate(modelMatrix.top(), ROVPosition));
 				modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(ROVYaw), glm::vec3(0.0, 1.0, 0.0)));
@@ -509,20 +568,36 @@ int main() {
 			// Draw View Volume
 			modelMatrix.push();
 				myShader.setVec4("material.diffuse", glm::vec4(0.6f, 0.6f, 0.6f, 0.6f));
+				myShader.setVec4("material.specular", glm::vec4(0.0f, 0.0, 0.0, 1.0f));
+				myShader.setFloat("material.shininess", 0.32f);
 				myShader.setMat4("model", modelMatrix.top());
 				glBindVertexArray(viewVolumeVAO);
 					glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 				glBindVertexArray(0);
 			modelMatrix.pop();
 
-			// draw sun
+			// draw light ball
 			myShader.setBool("useEmission", true);
-			modelMatrix.push();
-				modelMatrix.save(glm::translate(modelMatrix.top(), lightPositions[0]));
-				myShader.setVec4("material.diffuse", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
-				myShader.setMat4("model", modelMatrix.top());
-				drawSphere();
-			modelMatrix.pop();
+			for (unsigned int i = 0; i < pointLights.size(); i++) {
+				if (!pointLights[i].Enable) {
+					continue;
+				}
+				modelMatrix.push();
+					if (i == 4) {
+						// ROV light
+						modelMatrix.save(glm::translate(modelMatrix.top(), pointLights[i].Position + glm::vec3(0.0f, -0.7f, 0.0f)));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f)));
+					} else {
+						modelMatrix.save(glm::translate(modelMatrix.top(), pointLights[i].Position));
+						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.5f)));
+					}
+					myShader.setVec4("material.diffuse", glm::vec4(pointLights[i].Diffuse.x, pointLights[i].Diffuse.y, pointLights[i].Diffuse.z, 1.0f));
+					myShader.setVec4("material.specular", glm::vec4(pointLights[i].Specular.x, pointLights[i].Specular.y, pointLights[i].Specular.z, 1.0f));
+					myShader.setFloat("material.shininess", 32.0f);
+					myShader.setMat4("model", modelMatrix.top());
+					drawSphere();
+				modelMatrix.pop();
+			}
 			myShader.setBool("useEmission", false);
 		}
 
@@ -576,8 +651,7 @@ void showUI() {
 				ImGui::Text("Right = (%.2f, %.2f, %.2f)", camera.Right.x, camera.Right.y, camera.Right.z);
 				ImGui::Text("Up = (%.2f, %.2f, %.2f)", camera.Up.x, camera.Up.y, camera.Up.z);
 				ImGui::Text("Pitch = %.2f deg, Yaw = %.2f deg", camera.Pitch, camera.Yaw);
-			}
-			else {
+			} else {
 				ImGui::TextColored(ImVec4(1.0f, 0.5f, 1.0f, 1.0f), "Follow Camera");
 				ImGui::Text("Position = (%.2f, %.2f, %.2f)", followCamera.Position.x, followCamera.Position.y, followCamera.Position.z);
 				ImGui::Text("Front = (%.2f, %.2f, %.2f)", followCamera.Front.x, followCamera.Front.y, followCamera.Front.z);
@@ -684,6 +758,76 @@ void showUI() {
 				ImGui::TreePop();
 			}
 			ImGui::Spacing();
+
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Illumination")) {
+
+			ImGui::Text("Lighting Model: %s", useBlinnPhong ? "Blinn-Phong" : "Phong");
+			ImGui::Text("Shading Model: %s", usePhongShading ? "Phong" : "Gouraud");
+			ImGui::Checkbox("use Exponent", &useSpotExponent);
+			ImGui::Spacing();
+			
+			if (ImGui::TreeNode("Direction Light")) {
+				ImGui::SliderFloat3("Direction", (float*)&dirLight.Direction, -10.0f, 10.0f);
+				ImGui::SliderFloat3("Ambient", (float*)&dirLight.Ambient, 0.0f, 1.0f);
+				ImGui::SliderFloat3("Diffuse", (float*)&dirLight.Diffuse, 0.0f, 1.0f);
+				ImGui::SliderFloat3("Specular", (float*)&dirLight.Specular, 0.0f, 1.0f);
+				ImGui::Checkbox("Enable", &dirLight.Enable);
+				ImGui::TreePop();
+			}
+			ImGui::Spacing();
+
+			for (unsigned int i = 0; i < pointLights.size(); i++) {
+				std::stringstream ss;
+				ss << i;
+				std::string index = ss.str();
+
+				if (ImGui::TreeNode(std::string("Point Light " + index).c_str())) {
+					if (i != 4) {
+						// ROV的光，因為位置是鎖定在ROV上，所以這邊不給調整
+						ImGui::SliderFloat3(std::string("Position").c_str(), (float*)&pointLights[i].Position, -50.0f, 50.0f);
+					}
+					
+					ImGui::SliderFloat3(std::string("Ambient").c_str(), (float*)&pointLights[i].Ambient, 0.0f, 1.0f);
+					ImGui::SliderFloat3(std::string("Diffuse").c_str(), (float*)&pointLights[i].Diffuse, 0.0f, 1.0f);
+
+					if (i != 4) {
+						// ROV的Specular，不給調整，看起來才不會怪怪的
+						ImGui::SliderFloat3(std::string("Specular").c_str(), (float*)&pointLights[i].Specular, 0.0f, 1.0f);
+					}
+
+					ImGui::SliderFloat(std::string("Linear").c_str(), (float*)&pointLights[i].Linear, 0.00014f, 0.7f);
+					ImGui::SliderFloat(std::string("Quadratic").c_str(), (float*)&pointLights[i].Quadratic, 0.00007, 0.5f);
+					ImGui::Checkbox(std::string("Enable").c_str(), &pointLights[i].Enable);
+					ImGui::Spacing();
+					ImGui::TreePop();
+				}
+				ImGui::Spacing();
+			}
+
+			for (unsigned int i = 0; i < spotLights.size(); i++) {
+				std::stringstream ss;
+				ss << i;
+				std::string index = ss.str();
+
+				if (ImGui::TreeNode(std::string("Spot Light " + index).c_str())) {
+					ImGui::Text(std::string("Position: (%.2f, %.2f, %.2f)").c_str(), spotLights[i].Position.x, spotLights[i].Position.y, spotLights[i].Position.z);
+					ImGui::Text(std::string("Direction: (%.2f, %.2f, %.2f)").c_str(), spotLights[i].Direction.x, spotLights[i].Direction.y, spotLights[i].Direction.z);
+					ImGui::SliderFloat3(std::string("Ambient").c_str(), (float*)&spotLights[i].Ambient, 0.0f, 1.0f);
+					ImGui::SliderFloat3(std::string("Diffuse").c_str(), (float*)&spotLights[i].Diffuse, 0.0f, 1.0f);
+					ImGui::SliderFloat3(std::string("Specular").c_str(), (float*)&spotLights[i].Specular, 0.0f, 1.0f);
+					ImGui::SliderFloat(std::string("Linear").c_str(), (float*)&spotLights[i].Linear, 0.00014f, 0.7f);
+					ImGui::SliderFloat(std::string("Quadratic").c_str(), (float*)&spotLights[i].Quadratic, 0.00007, 0.5f);
+					ImGui::SliderFloat(std::string("Cutoff").c_str(), (float*)&spotLights[i].Cutoff, 0.0f, spotLights[i].OuterCutoff - 1);
+					ImGui::SliderFloat(std::string("OuterCutoff").c_str(), (float*)&spotLights[i].OuterCutoff, spotLights[i].Cutoff + 1, 40.0f);
+					ImGui::SliderFloat(std::string("Exponent").c_str(), (float*)&spotLights[i].Exponent, 0.0f, 256.0f);
+					ImGui::Checkbox(std::string("Enable").c_str(), &spotLights[i].Enable);
+					ImGui::Spacing();
+					ImGui::TreePop();
+				}
+				ImGui::Spacing();
+			}
 
 			ImGui::EndTabItem();
 		}
@@ -1209,17 +1353,26 @@ void drawPlane() {
 }
 
 void drawFish() {
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, fishTexture);
+	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, fishTexture);
 	drawPlane();
 }
 
 void drawGrass() {
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, grassTexture);
+	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, grassTexture);
 	drawPlane();
 }
 
 void drawBox() {
+	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, boxTexture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, boxSpecularTexture);
 	drawCube();
 }
 
@@ -1229,6 +1382,8 @@ void drawROV(Shader shader) {
 		modelMatrix.push();
 			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.6f, 2.0f)));
 			shader.setVec4("material.diffuse", glm::vec4(1.0f, 0.956862745f, 0.580392157f, 1.0f));
+			shader.setVec4("material.specular", glm::vec4(0.893548f, 0.771906f, 0.866721f, 1.0f));
+			shader.setFloat("material.shininess", 256.0f);
 			shader.setMat4("model", modelMatrix.top());
 			drawCube();
 		modelMatrix.pop();
@@ -1239,6 +1394,8 @@ void drawROV(Shader shader) {
 			modelMatrix.push();
 				modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.8f, 0.4f, 1.6f)));
 				shader.setVec4("material.diffuse", glm::vec4(0.611764706f, 0.611764706f, 0.611764706f, 1.0f));
+				shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+				shader.setFloat("material.shininess", 16.0f);
 				shader.setMat4("model", modelMatrix.top());
 				drawCube();
 			modelMatrix.pop();
@@ -1248,6 +1405,8 @@ void drawROV(Shader shader) {
 				modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.95f)));
 				modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.3f)));
 				shader.setVec4("material.diffuse", glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
+				shader.setVec4("material.specular", glm::vec4(0.50,0.50,	0.50,1.0f));
+				shader.setFloat("material.shininess", 16.0f);
 				shader.setMat4("model", modelMatrix.top());
 				drawCube();
 			modelMatrix.pop();
@@ -1258,6 +1417,8 @@ void drawROV(Shader shader) {
 				modelMatrix.push();
 					modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.2f)));
 					shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+					shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+					shader.setFloat("material.shininess", 64.0f);
 					shader.setMat4("model", modelMatrix.top());
 					drawSphere();
 				modelMatrix.pop();
@@ -1267,6 +1428,8 @@ void drawROV(Shader shader) {
 					modelMatrix.push();
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.6f, 0.05f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 64.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawCube();
 					modelMatrix.pop();
@@ -1275,6 +1438,8 @@ void drawROV(Shader shader) {
 					modelMatrix.push();
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.15f, 0.15f, 0.15f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 64.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawSphere();
 					modelMatrix.pop();
@@ -1284,6 +1449,8 @@ void drawROV(Shader shader) {
 						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 1.0f, 0.05f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 64.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawCube();
 					modelMatrix.pop();
@@ -1292,6 +1459,8 @@ void drawROV(Shader shader) {
 					modelMatrix.push();
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 0.1f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 64.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawSphere();
 					modelMatrix.pop();
@@ -1302,6 +1471,8 @@ void drawROV(Shader shader) {
 						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.2f, 0.2f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 64.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawCube();
 					modelMatrix.pop();
@@ -1311,6 +1482,8 @@ void drawROV(Shader shader) {
 						modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.05f, 0.2f, 0.2f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 64.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawCube();
 					modelMatrix.pop();
@@ -1325,6 +1498,8 @@ void drawROV(Shader shader) {
 				modelMatrix.push();
 					modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 0.6f)));
 					shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+					shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+					shader.setFloat("material.shininess", 64.0f);
 					shader.setMat4("model", modelMatrix.top());
 					drawCube();
 				modelMatrix.pop();
@@ -1335,6 +1510,8 @@ void drawROV(Shader shader) {
 					modelMatrix.push();
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.2f, 0.1f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.4f, 0.4f, 0.4f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 16.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawSphere();
 					modelMatrix.pop();
@@ -1343,6 +1520,8 @@ void drawROV(Shader shader) {
 						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 16.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawCube();
 					modelMatrix.pop();
@@ -1352,6 +1531,8 @@ void drawROV(Shader shader) {
 						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 16.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawCube();
 					modelMatrix.pop();
@@ -1361,6 +1542,8 @@ void drawROV(Shader shader) {
 						modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.3f, 0.0f)));
 						modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.2f, 0.6f, 0.05f)));
 						shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+						shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+						shader.setFloat("material.shininess", 16.0f);
 						shader.setMat4("model", modelMatrix.top());
 						drawCube();
 					modelMatrix.pop();
@@ -1378,6 +1561,8 @@ void drawCamera(Shader shader) {
 	modelMatrix.push();
 		modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(1.0f, 0.8f, 1.8f)));
 		shader.setVec4("material.diffuse", glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+		shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+		shader.setFloat("material.shininess", 32.0f);
 		shader.setMat4("model", modelMatrix.top());
 		drawCube();
 
@@ -1385,6 +1570,8 @@ void drawCamera(Shader shader) {
 			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, -0.2f)));
 			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.6f, 0.6f, 1.2f)));
 			shader.setVec4("material.diffuse", glm::vec4(0.25f, 0.25f, 0.25f, 1.0f));
+			shader.setVec4("material.specular", glm::vec4(0.774597f, 0.774597f, 0.774597f, 1.0f));
+			shader.setFloat("material.shininess", 32.0f);
 			shader.setMat4("model", modelMatrix.top());
 			drawCube();
 		modelMatrix.pop();
@@ -1399,6 +1586,8 @@ void drawAxis(Shader shader) {
 			// modelMatrix.save(glm::rotate(modelMatrix.top(), glm::radians(currentTime * 5), glm::vec3(0.0, 1.0, 0.0)));
 			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(3.0f, 0.1f, 0.1f)));
 			shader.setVec4("material.diffuse", glm::vec4(1.0f, 0.0f, 0.0f, 1.0));
+			shader.setVec4("material.specular", glm::vec4(1.0f, 0.0f, 0.0f, 1.0));
+			shader.setFloat("material.shininess", 64.0f);
 			shader.setMat4("model", modelMatrix.top());
 			drawCube();
 		modelMatrix.pop();
@@ -1408,6 +1597,8 @@ void drawAxis(Shader shader) {
 			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 1.5f, 0.0f)));
 			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 3.0f, 0.1f)));
 			shader.setVec4("material.diffuse", glm::vec4(0.0f, 1.0f, 0.0f, 1.0));
+			shader.setVec4("material.specular", glm::vec4(0.0f, 1.0f, 0.0f, 1.0));
+			shader.setFloat("material.shininess", 64.0f);
 			shader.setMat4("model", modelMatrix.top());
 			drawCube();
 		modelMatrix.pop();
@@ -1416,6 +1607,8 @@ void drawAxis(Shader shader) {
 			modelMatrix.save(glm::translate(modelMatrix.top(), glm::vec3(0.0f, 0.0f, 1.5f)));
 			modelMatrix.save(glm::scale(modelMatrix.top(), glm::vec3(0.1f, 0.1f, 3.0f)));
 			shader.setVec4("material.diffuse", glm::vec4(0.0f, 0.0f, 1.0f, 1.0));
+			shader.setVec4("material.specular", glm::vec4(0.0f, 0.0f, 1.0f, 1.0));
+			shader.setFloat("material.shininess", 64.0f);
 			shader.setMat4("model", modelMatrix.top());
 			drawCube();
 		modelMatrix.pop();
@@ -1627,8 +1820,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 			isfullscreen = false;
 			setFullScreen();
 			logging::loggingMessage(logging::LogType::INFO, "Fullscreen: off.");
-		}
-		else {
+		} else {
 			isfullscreen = true;
 			setFullScreen();
 			logging::loggingMessage(logging::LogType::INFO, "Fullscreen: on.");
@@ -1639,8 +1831,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 		if (showAxis) {
 			showAxis = false;
 			logging::loggingMessage(logging::LogType::INFO, "Hidding Axis.");
-		}
-		else {
+		} else {
 			showAxis = true;
 			logging::loggingMessage(logging::LogType::INFO, "Showing Axis.");
 		}
@@ -1649,10 +1840,11 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 	if (key == GLFW_KEY_G) {
 		if (isGhost) {
 			isGhost = false;
+			spotLights[1].Enable = false;
 			logging::loggingMessage(logging::LogType::INFO, "Ghost mode is turn off.");
-		}
-		else {
+		} else {
 			isGhost = true;
+			spotLights[1].Enable = true;
 			logging::loggingMessage(logging::LogType::INFO, "You're a ghost!");
 		}
 	}
@@ -1661,10 +1853,49 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 		if (isPerspective) {
 			isPerspective = false;
 			logging::loggingMessage(logging::LogType::INFO, "Using Orthogonal Projection");
-		}
-		else {
+		} else {
 			isPerspective = true;
 			logging::loggingMessage(logging::LogType::INFO, "Using Perspective Projection");
+		}
+	}
+
+	// 手電筒開關
+	if (key == GLFW_KEY_F) {
+		if (isGhost) {
+			if (spotLights[1].Enable) {
+				spotLights[1].Enable = false;
+				logging::loggingMessage(logging::LogType::INFO, "Spot Light 1 is turn off.");
+			} else {
+				spotLights[1].Enable = true;
+				logging::loggingMessage(logging::LogType::INFO, "Spot Light 1 is turn on.");
+			}
+		} else {
+			if (spotLights[0].Enable) {
+				spotLights[0].Enable = false;
+				logging::loggingMessage(logging::LogType::INFO, "Spot Light 0 is turn off.");
+			}
+			else {
+				spotLights[0].Enable = true;
+				logging::loggingMessage(logging::LogType::INFO, "Spot Light 0 is turn on.");
+			}
+		}
+	}
+
+	// Blinn-Phong 與 Phong 光照模型的切換
+	if (key == GLFW_KEY_L) {
+		if (useBlinnPhong) {
+			useBlinnPhong = false;
+		} else {
+			useBlinnPhong = true;
+		}
+	}
+
+	// Phong 與 Gouraud 光照模型的切換
+	if (key == GLFW_KEY_H) {
+		if (usePhongShading) {
+			usePhongShading = false;
+		} else {
+			usePhongShading = true;
 		}
 	}
 
